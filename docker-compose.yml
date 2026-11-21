@@ -1,0 +1,113 @@
+services:
+  # Ensures the named volume for RustFS is owned by UID/GID 10001 (the non-root user inside rustfs/rustfs)
+  rustfs-init:
+    image: alpine:3.20
+    user: root
+    volumes:
+      - rustfs_data:/data
+    command: ["sh", "-c", "mkdir -p /data && chown -R 10001:10001 /data"]
+    restart: "no"
+
+  # 1. Shared Object Storage: RustFS (S3-compatible) — shared by both Server A & Server B
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: storage-demo-rustfs
+    depends_on:
+      rustfs-init:
+        condition: service_completed_successfully
+    ports:
+      - "${RUSTFS_API_PORT:-9000}:9000"         # S3-compatible HTTP API
+      - "${RUSTFS_CONSOLE_PORT:-9001}:9001"     # RustFS Web Management Console
+    environment:
+      RUSTFS_ADDRESS: "0.0.0.0:9000"
+      RUSTFS_CONSOLE_ADDRESS: "0.0.0.0:9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_CORS_ALLOWED_ORIGINS: "*"
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      RUSTFS_VOLUMES: "/data"
+    volumes:
+      - rustfs_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/health || wget -qO- http://127.0.0.1:9000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+  # 2. App Server A (NestJS in watch mode) — has its OWN local file folder (file_storage_a)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: storage-demo-backend-a
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    environment:
+      PORT: 3000
+      SERVER_NAME: "Server A"
+      S3_ENDPOINT: http://rustfs:9000
+      S3_PUBLIC_ENDPOINT: http://localhost:${RUSTFS_API_PORT:-9000}
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      S3_BUCKET: ${S3_BUCKET:-storage-demo}
+      RUSTFS_CONSOLE_URL: http://localhost:${RUSTFS_CONSOLE_PORT:-9001}
+      FILE_STORAGE_DIR: /storage/file
+      BLOCK_STORAGE_FILE: /storage/block/virtual-disk.img
+      BLOCK_SIZE_BYTES: 4096
+      BLOCK_COUNT: 64
+      TSC_WATCHFILE: UseFsEventsWithFallbackDynamicPolling
+    volumes:
+      - ./backend/src:/app/src
+      - file_storage_a:/storage/file
+      - block_storage_data:/storage/block
+    command: ["npm", "run", "start:dev"]
+    restart: unless-stopped
+
+  # 3. App Server B (second NestJS instance) — has its OWN separate local folder (file_storage_b)
+  #    Demonstrates real 404 on local file storage vs real 200 on shared RustFS!
+  backend-b:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: storage-demo-backend-b
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_B_PORT:-3001}:3000"
+    environment:
+      PORT: 3000
+      SERVER_NAME: "Server B"
+      S3_ENDPOINT: http://rustfs:9000
+      S3_PUBLIC_ENDPOINT: http://localhost:${RUSTFS_API_PORT:-9000}
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      S3_BUCKET: ${S3_BUCKET:-storage-demo}
+      RUSTFS_CONSOLE_URL: http://localhost:${RUSTFS_CONSOLE_PORT:-9001}
+      FILE_STORAGE_DIR: /storage/file
+      BLOCK_STORAGE_FILE: /storage/block/virtual-disk.img
+      BLOCK_SIZE_BYTES: 4096
+      BLOCK_COUNT: 64
+      TSC_WATCHFILE: UseFsEventsWithFallbackDynamicPolling
+    volumes:
+      - ./backend/src:/app/src
+      - file_storage_b:/storage/file
+      - block_storage_b_data:/storage/block
+    command: ["npm", "run", "start:dev"]
+    restart: unless-stopped
+
+volumes:
+  rustfs_data:
+  file_storage_a:
+  file_storage_b:
+  block_storage_data:
+  block_storage_b_data:
