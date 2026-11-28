@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Music,
   FastForward,
@@ -27,6 +27,7 @@ async stream(@Query('key') key: string, @Req() req: Request, @Res() res: Respons
 }`;
 
 export const Step5StreamingAndWrapUp: React.FC = () => {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [mediaKey, setMediaKey] = useState<string | null>(null);
   const [mediaSize, setMediaSize] = useState<number>(0);
   const [audioNonce, setAudioNonce] = useState<number>(0);
@@ -82,6 +83,25 @@ export const Step5StreamingAndWrapUp: React.FC = () => {
         totalMb: (mediaSize / (1024 * 1024)).toFixed(2),
         skippedPct: skipped,
       });
+
+      // Seek the actual HTML5 audio player to the middle (50%) and play it
+      const audio = audioRef.current;
+      if (audio) {
+        const seekAndPlay = () => {
+          const targetTime = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration / 2 : 7.5;
+          audio.currentTime = targetTime;
+          audio.play().catch(() => {
+            // Ignore autoplay restriction if triggered without user gesture
+          });
+        };
+
+        if (audio.error || audio.readyState < 1) {
+          audio.addEventListener('loadedmetadata', seekAndPlay, { once: true });
+          audio.load();
+        } else {
+          seekAndPlay();
+        }
+      }
     } catch (err: any) {
       setError(err.message);
     }
@@ -154,8 +174,10 @@ export const Step5StreamingAndWrapUp: React.FC = () => {
         {mediaKey && (
           <div className="rounded-xl border border-sky-500/30 bg-sky-950/15 p-4 space-y-3">
             <audio
+              ref={audioRef}
               key={`${mediaKey}-${audioNonce}`}
               controls
+              preload="metadata"
               src={`${api.getObjectStreamUrl(mediaKey)}&v=${audioNonce}`}
               className="w-full h-10"
             />
