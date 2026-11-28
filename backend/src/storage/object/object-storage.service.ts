@@ -93,13 +93,21 @@ export class ObjectStorageService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    try {
-      await this.ensureBucket();
-      await this.seedWelcomeObject();
-    } catch (err) {
-      this.logger.warn(
-        `RustFS not ready during startup (${(err as Error).message}). Will retry automatically on first request.`,
-      );
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      try {
+        await this.ensureBucket();
+        await this.seedWelcomeObject();
+        return;
+      } catch (err) {
+        this.bucketReady = false;
+        if (attempt === 5) {
+          this.logger.warn(
+            `RustFS not ready after ${attempt} startup attempts (${(err as Error).message}). Will retry automatically on first request.`,
+          );
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
     }
   }
 
@@ -109,29 +117,23 @@ export class ObjectStorageService implements OnModuleInit {
       await this.s3.send(new HeadBucketCommand({ Bucket: this.bucket }));
       this.bucketReady = true;
     } catch (err: any) {
-      const statusCode = err?.$metadata?.httpStatusCode;
-      if (statusCode === 404 || err?.name === 'NotFound' || err?.name === 'NoSuchBucket') {
+      try {
         await this.s3.send(new CreateBucketCommand({ Bucket: this.bucket }));
         this.bucketReady = true;
         this.logger.log(`Created RustFS bucket "${this.bucket}"`);
-      } else {
-        // Attempt CreateBucket once in case RustFS returns another code on missing bucket
-        try {
-          await this.s3.send(new CreateBucketCommand({ Bucket: this.bucket }));
+      } catch (createErr: any) {
+        const createStatus = createErr?.$metadata?.httpStatusCode;
+        if (
+          createStatus === 409 ||
+          createErr?.name === 'BucketAlreadyOwnedByYou' ||
+          createErr?.name === 'BucketAlreadyExists'
+        ) {
           this.bucketReady = true;
-          this.logger.log(`Created RustFS bucket "${this.bucket}"`);
-        } catch (createErr: any) {
-          if (
-            createErr?.name === 'BucketAlreadyOwnedByYou' ||
-            createErr?.name === 'BucketAlreadyExists'
-          ) {
-            this.bucketReady = true;
-            return;
-          }
-          throw new ServiceUnavailableException(
-            `Cannot connect to RustFS at ${this.endpoint}: ${(err as Error).message}`,
-          );
+          return;
         }
+        throw new ServiceUnavailableException(
+          `Cannot connect to RustFS at ${this.endpoint}: ${(err as Error).message}`,
+        );
       }
     }
   }
@@ -141,21 +143,27 @@ export class ObjectStorageService implements OnModuleInit {
       new ListObjectsV2Command({ Bucket: this.bucket, MaxKeys: 1 }),
     );
     if ((existing.Contents?.length || 0) === 0) {
-      await this.putObject(
-        'welcome/hello-rustfs.txt',
-        Buffer.from(
-          'Welcome to RustFS Object Storage!\n\n' +
-            'Notice that "welcome/" is NOT a real directory — it is just part of a flat key string.\n' +
-            'This object also carries custom x-amz-meta-* headers and can be shared via a presigned HTTP URL.',
-          'utf-8',
-        ),
-        'text/plain; charset=utf-8',
-        {
-          author: 'storage-demo',
-          architecture: 'object-storage',
-          engine: 'rustfs',
-        },
+      // Seed directly via S3Client so the bucket has a starter object on fresh Docker boot
+      // even before participants complete Code-Along #1 inside putObject().
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: 'welcome/hello-rustfs.txt',
+          Body: Buffer.from(
+            'Welcome to RustFS Object Storage!\n\n' +
+              'Notice that "welcome/" is NOT a real directory — it is just part of a flat key string.\n' +
+              'This object also carries custom metadata labels and can be shared via a presigned HTTP URL.',
+            'utf-8',
+          ),
+          ContentType: 'text/plain; charset=utf-8',
+          Metadata: {
+            author: 'storage-demo',
+            architecture: 'object-storage',
+            engine: 'rustfs',
+          },
+        }),
       );
+      this.logger.log(`Seeded starter object "welcome/hello-rustfs.txt" in "${this.bucket}"`);
     }
   }
 
