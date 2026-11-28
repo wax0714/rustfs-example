@@ -18,7 +18,7 @@ import { ObjectStorageService } from './object-storage.service';
 
 @Controller('storage/object')
 export class ObjectStorageController {
-  constructor(private readonly objectService: ObjectStorageService) {}
+  constructor(private readonly objectService: ObjectStorageService) { }
 
   @Get('list')
   list(@Query('prefix') prefix?: string) {
@@ -51,40 +51,7 @@ export class ObjectStorageController {
     // CODE-ALONG #3 (Step 5): Stream audio/video straight from RustFS (with Range seeking)
     // Uncomment or type this block, save the file, and try Step 5 in the UI!
     // =========================================================================
-    /*
-    const rangeHeader = typeof req.headers.range === 'string' ? req.headers.range : undefined;
-    const result = await this.objectService.streamObject(key, rangeHeader);
 
-    res.status(result.statusCode);
-    res.setHeader('Content-Type', result.contentType);
-    res.setHeader('Accept-Ranges', result.acceptRanges);
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('X-Storage-Stream-Mode', 'zero-buffer-pipe');
-    if (result.etag) res.setHeader('ETag', result.etag);
-    if (result.contentLength !== undefined) {
-      res.setHeader('Content-Length', String(result.contentLength));
-    }
-    if (result.contentRange) {
-      res.setHeader('Content-Range', result.contentRange);
-    }
-
-    req.on('close', () => {
-      if (!result.stream.destroyed) {
-        result.stream.destroy();
-      }
-    });
-
-    result.stream.on('error', () => {
-      if (!res.headersSent) {
-        res.status(502).end('Error streaming object from RustFS');
-      } else {
-        res.end();
-      }
-    });
-
-    result.stream.pipe(res);
-    return;
-    */
 
     res.status(501).json({
       statusCode: 501,

@@ -151,8 +151,8 @@ export class ObjectStorageService implements OnModuleInit {
           Key: 'welcome/hello-rustfs.txt',
           Body: Buffer.from(
             'Welcome to RustFS Object Storage!\n\n' +
-              'Notice that "welcome/" is NOT a real directory — it is just part of a flat key string.\n' +
-              'This object also carries custom metadata labels and can be shared via a presigned HTTP URL.',
+            'Notice that "welcome/" is NOT a real directory — it is just part of a flat key string.\n' +
+            'This object also carries custom metadata labels and can be shared via a presigned HTTP URL.',
             'utf-8',
           ),
           ContentType: 'text/plain; charset=utf-8',
@@ -279,56 +279,14 @@ export class ObjectStorageService implements OnModuleInit {
 
     // =========================================================================
     // CODE-ALONG #1 (Step 2): Upload an object to RustFS using PutObjectCommand
-    // Uncomment or type this block, save the file, and try Step 2 in the UI!
     // =========================================================================
-    /*
-    const res = await this.s3.send(
-      new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-        Body: body,
-        ContentType: contentType,
 
-        // =====================================================================
-        // CODE-ALONG #2a (Step 4): Attach custom labels (metadata) to the object
-        // Uncomment the line below, save the file, and try Step 4 in the UI!
-        // =====================================================================
-        // Metadata: cleanMeta,
-      }),
-    );
 
-    const durationMs = Number((performance.now() - start).toFixed(2));
 
-    let presignedUrl: string | null = null;
-    try {
-      presignedUrl = await this.createPresignedUrl(key, 300);
-    } catch {
-      // Completed in Code-Along #2b (Step 4)
-    }
+    // =====================================================================
+    // CODE-ALONG #2a (Step 4): Attach custom labels (metadata) to the object
+    // =====================================================================
 
-    // Read back metadata from RustFS so Step 4 shows whether Code-Along #2a is active
-    let storedMetadata: Record<string, string> = {};
-    try {
-      const head = await this.s3.send(
-        new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
-      );
-      storedMetadata = head.Metadata || {};
-    } catch {
-      // ignore
-    }
-
-    return {
-      bucket: this.bucket,
-      key,
-      size: body.byteLength,
-      etag: (res.ETag || '').replace(/"/g, ''),
-      contentType,
-      metadata: storedMetadata,
-      presignedUrl,
-      durationMs,
-      mechanism: 'HTTP PUT (S3 PutObject) — immutable whole-object upload with custom headers',
-    };
-    */
 
     throw new NotImplementedException(
       'Code-Along #1 not completed yet! Open backend/src/storage/object/object-storage.service.ts and implement PutObjectCommand inside putObject().',
